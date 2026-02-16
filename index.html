@@ -2,88 +2,198 @@
 <html lang="ja">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>ARG 変換ツール（順/逆・辞書分離）</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <title>ARG 変換ツール（JSON辞書 / 順逆）</title>
   <style>
-    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, "Noto Sans JP", sans-serif; margin: 16px; }
-    textarea { width: 100%; min-height: 140px; }
-    .row { display: grid; grid-template-columns: 1fr; gap: 10px; margin: 12px 0; }
-    .btns { display: flex; gap: 8px; flex-wrap: wrap; }
-    button { padding: 10px 12px; cursor: pointer; }
-    .hint { color: #555; font-size: 13px; line-height: 1.5; }
-    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    :root{
+      --bg:#0b0d12;
+      --card:#121723;
+      --muted:#9aa4b2;
+      --text:#e8edf5;
+      --line:#263043;
+      --accent:#5dd6ff;
+      --btn:#1a2335;
+      --btn2:#1e2b44;
+      --danger:#ff5d7a;
+      --ok:#79ffa8;
+      --radius:14px;
+    }
+    *{ box-sizing:border-box; }
+    body{
+      margin:0;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, "Noto Sans JP", sans-serif;
+      background:linear-gradient(180deg,#070912, #0b0d12 30%);
+      color:var(--text);
+    }
+    header{
+      position:sticky; top:0; z-index:10;
+      background:rgba(11,13,18,.86);
+      backdrop-filter: blur(10px);
+      border-bottom:1px solid var(--line);
+      padding:12px 14px;
+    }
+    header .title{
+      display:flex; align-items:center; gap:10px;
+      font-weight:700;
+    }
+    header .badge{
+      font-size:12px;
+      color:#0b0d12;
+      background:var(--accent);
+      padding:2px 8px;
+      border-radius:999px;
+      font-weight:700;
+    }
+    .wrap{ max-width:1100px; margin:0 auto; padding:14px; padding-bottom:42px; }
+    .grid{
+      display:grid;
+      grid-template-columns: 1fr 1fr;
+      gap:12px;
+      margin-top:12px;
+    }
+    @media (max-width: 860px){
+      .grid{ grid-template-columns:1fr; }
+    }
+    .card{
+      background:rgba(18,23,35,.92);
+      border:1px solid var(--line);
+      border-radius:var(--radius);
+      padding:12px;
+      box-shadow: 0 10px 25px rgba(0,0,0,.25);
+    }
+    .hint{
+      color:var(--muted);
+      font-size:13px;
+      line-height:1.6;
+    }
+    .row{ display:flex; gap:10px; flex-wrap:wrap; margin-top:10px; }
+    button{
+      appearance:none;
+      border:1px solid var(--line);
+      background:var(--btn);
+      color:var(--text);
+      padding:11px 12px;
+      border-radius:12px;
+      cursor:pointer;
+      font-weight:650;
+      letter-spacing:.02em;
+      min-height:44px; /* モバイル用 */
+      touch-action:manipulation;
+    }
+    button:hover{ background:var(--btn2); }
+    button.primary{ border-color:rgba(93,214,255,.55); }
+    button.danger{ border-color:rgba(255,93,122,.55); }
+    button.ghost{ background:transparent; }
+    .status{
+      margin-top:10px;
+      font-size:13px;
+      color:var(--muted);
+      padding:10px 12px;
+      border-radius:12px;
+      border:1px dashed rgba(38,48,67,.8);
+    }
+    .status.ok{ color: #d8ffe6; border-color: rgba(121,255,168,.35); }
+    .status.err{ color: #ffd0d8; border-color: rgba(255,93,122,.35); }
+    label{ display:block; font-size:13px; color:var(--muted); margin:10px 0 6px; }
+    textarea{
+      width:100%;
+      min-height: 160px;
+      resize: vertical;
+      border-radius: 12px;
+      border:1px solid var(--line);
+      background:#0c101a;
+      color:var(--text);
+      padding:12px;
+      line-height:1.6;
+      font-size:15px;
+      outline:none;
+    }
+    textarea:focus{ border-color: rgba(93,214,255,.55); box-shadow: 0 0 0 4px rgba(93,214,255,.12); }
+    .mono{ font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+
+    .split{
+      display:grid;
+      grid-template-columns: 1fr;
+      gap:12px;
+    }
+
+    .mini{
+      display:flex; align-items:center; gap:8px; flex-wrap:wrap;
+      font-size:12px; color:var(--muted);
+      margin-top:6px;
+    }
+    .pill{
+      padding:2px 8px; border-radius:999px;
+      border:1px solid var(--line);
+      background:rgba(12,16,26,.7);
+    }
   </style>
 </head>
 <body>
-  <h2>ARG 変換ツール（順変換 / 逆変換）</h2>
-
-  <div class="row">
-    <div class="hint">
-      辞書は <span class="mono">dict.txt</span> を自動読込。更新は dict.txt だけ差し替えでOK。<br>
-      形式：TSV推奨（暗号&lt;Tab&gt;平文）。B空欄行は無視。
-    </div>
-
-    <label>
-      辞書（表示のみ。必要なら編集→下の「辞書をダウンロード」）
-      <textarea id="dict" class="mono" placeholder="dict.txt 読み込み中…"></textarea>
-    </label>
-
-    <div class="btns">
-      <button id="btnForward">順変換（暗号 → 平文）</button>
-      <button id="btnReverse">逆変換（平文 → 暗号）</button>
-      <button id="btnExtract">未変換文字を抽出</button>
-      <button id="btnSwap">入力⇔出力を入れ替え</button>
-      <button id="btnDlDict">辞書をダウンロード（dict.txt）</button>
-      <button id="btnClear">全部クリア</button>
-    </div>
-
-    <label>入力テキスト
-      <textarea id="input" placeholder="ここに貼る"></textarea>
-    </label>
-
-    <label>出力テキスト
-      <textarea id="output" placeholder="ここに結果が出る"></textarea>
-    </label>
-
-    <label>未変換文字（出現回数）
-      <textarea id="unknown" class="mono" placeholder="「未変換文字を抽出」を押すと出る"></textarea>
-    </label>
-
-    <div class="hint" id="status"></div>
+<header>
+  <div class="title">
+    <span>ARG 変換ツール</span>
+    <span class="badge">dict.json</span>
   </div>
+</header>
+
+<div class="wrap">
+  <div class="card">
+    <div class="hint">
+      辞書は <span class="mono">dict.json</span> を自動読込（同じフォルダに置く）。<br>
+      形式： <span class="mono">{ "暗号":"平文", ... }</span><br>
+      逆変換は value→key で逆引き。value重複がある場合は先勝ち（ステータスに警告出す）。
+    </div>
+
+    <div class="row">
+      <button class="primary" id="btnForward">順変換（暗号 → 平文）</button>
+      <button class="primary" id="btnReverse">逆変換（平文 → 暗号）</button>
+      <button id="btnSwap">入力⇔出力</button>
+      <button id="btnExtract">未変換文字を抽出</button>
+      <button id="btnCopyOut">出力をコピー</button>
+      <button class="ghost" id="btnReload">辞書を再読込</button>
+      <button class="danger" id="btnClear">全部クリア</button>
+    </div>
+
+    <div class="mini">
+      <span class="pill">モバイル最適化</span>
+      <span class="pill">UTF-8前提</span>
+      <span class="pill">GitHub Pages対応</span>
+    </div>
+
+    <div class="status" id="status">辞書ロード待ち…</div>
+  </div>
+
+  <div class="grid">
+    <div class="card split">
+      <div>
+        <label>入力テキスト</label>
+        <textarea id="input" placeholder="ここに貼る"></textarea>
+      </div>
+      <div>
+        <label>出力テキスト</label>
+        <textarea id="output" placeholder="ここに結果が出る"></textarea>
+      </div>
+    </div>
+
+    <div class="card split">
+      <div>
+        <label>辞書（表示のみ）</label>
+        <textarea id="dict" class="mono" placeholder="dict.json 読み込み中…" readonly></textarea>
+      </div>
+      <div>
+        <label>未変換文字（出現回数）</label>
+        <textarea id="unknown" class="mono" placeholder="「未変換文字を抽出」を押すと出る" readonly></textarea>
+      </div>
+    </div>
+  </div>
+</div>
 
 <script>
   const $ = (id) => document.getElementById(id);
 
   function escapeRegex(s) {
     return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  }
-
-  function parseDict(text) {
-    const lines = text.split(/\r?\n/);
-    const pairs = [];
-    for (const line of lines) {
-      const t = line.trim();
-      if (!t) continue;
-
-      let a = "", b = "";
-      if (t.includes("\t")) {
-        const parts = t.split("\t");
-        a = (parts[0] ?? "").trim();
-        b = (parts[1] ?? "").trim();
-      } else if (t.includes(",")) {
-        const parts = t.split(",");
-        a = (parts[0] ?? "").trim();
-        b = (parts[1] ?? "").trim();
-      } else {
-        continue;
-      }
-
-      // 片方空欄は無視（B空欄は置換しない）
-      if (!a || !b) continue;
-      pairs.push([a, b]);
-    }
-    return pairs;
   }
 
   function buildReplacer(map) {
@@ -93,87 +203,135 @@
     return (s) => s.replace(re, (m) => map.get(m) ?? m);
   }
 
-  function buildMap(pairs, mode) {
-    const map = new Map();
-    let dup = 0;
-    for (const [a, b] of pairs) {
-      const k = (mode === "forward") ? a : b;
-      const v = (mode === "forward") ? b : a;
-      if (map.has(k) && map.get(k) !== v) dup++;
-      map.set(k, v);
+  // dict.json: { "cipher":"plain", ... }
+  let dictObj = null;
+  let forwardMap = new Map(); // cipher -> plain
+  let reverseMap = new Map(); // plain -> cipher
+  let reverseDup = 0;
+
+  function rebuildMaps() {
+    forwardMap = new Map();
+    reverseMap = new Map();
+    reverseDup = 0;
+
+    if (!dictObj) return;
+
+    for (const [cipher, plain] of Object.entries(dictObj)) {
+      if (!cipher || !plain) continue;
+      forwardMap.set(cipher, plain);
+
+      // 逆引き（value重複に注意）
+      if (reverseMap.has(plain) && reverseMap.get(plain) !== cipher) {
+        reverseDup++;
+        // 先勝ち（最初に入ったやつを維持）
+        continue;
+      }
+      reverseMap.set(plain, cipher);
     }
-    return { map, dup };
   }
 
   function run(mode) {
-    const dictText = $("dict").value;
     const input = $("input").value;
-    const pairs = parseDict(dictText);
 
-    const { map, dup } = buildMap(pairs, mode);
+    const map = (mode === "forward") ? forwardMap : reverseMap;
     const replacer = buildReplacer(map);
     const out = replacer ? replacer(input) : input;
 
     $("output").value = out;
+
+    const base = `有効キー数: ${forwardMap.size}`;
+    const warn = reverseDup ? ` / 逆引き重複(平文側の重複): ${reverseDup}` : "";
+    $("status").className = "status ok";
     $("status").textContent =
-      `辞書行数: ${pairs.length} / 有効キー数: ${map.size}` +
-      (dup ? ` / 競合っぽい行: ${dup}` : "");
+      (mode === "forward" ? "順変換OK" : "逆変換OK") + `（${base}${warn}）`;
   }
 
   function extractUnknown() {
-    // 「入力→出力」で残った文字（=変換されてない候補）をカウント
+    // 出力に残った文字をカウント（空白類除外）
     const out = $("output").value;
     const counts = new Map();
     for (const ch of [...out]) {
       if (ch === " " || ch === "　" || ch === "\n" || ch === "\r" || ch === "\t") continue;
       counts.set(ch, (counts.get(ch) ?? 0) + 1);
     }
-    // 頻度は並べ替えない（要望どおり）
     let s = "";
     for (const [k,v] of counts.entries()) s += `${k}\t${v}\n`;
     $("unknown").value = s.trim();
   }
 
   async function loadDict() {
+    $("status").className = "status";
+    $("status").textContent = "dict.json 読み込み中…";
+
     try {
-      const resp = await fetch("./dict.txt", { cache: "no-store" });
-      if (!resp.ok) throw new Error("dict fetch failed");
-      const txt = await resp.text();
-      $("dict").value = txt.trimEnd();
-      $("status").textContent = "dict.txt 読み込みOK";
+      const resp = await fetch("./dict.json", { cache: "no-store" });
+      if (!resp.ok) throw new Error("dict fetch failed: " + resp.status);
+
+      dictObj = await resp.json();
+
+      // 表示用：見やすく整形
+      $("dict").value = JSON.stringify(dictObj, null, 2);
+
+      rebuildMaps();
+
+      $("status").className = "status ok";
+      $("status").textContent =
+        `dict.json 読み込みOK（有効キー数: ${forwardMap.size}` +
+        (reverseDup ? ` / 逆引き重複: ${reverseDup}` : "") +
+        `）`;
+
     } catch (e) {
+      dictObj = null;
+      forwardMap = new Map();
+      reverseMap = new Map();
       $("dict").value = "";
-      $("status").textContent = "dict.txt が読めない。GitHub Pages上で開けてるか確認してくれ。";
+      $("status").className = "status err";
+      $("status").textContent =
+        "dict.json が読めない。GitHub Pagesで同階層に置けてるか確認。ファイル名/大文字小文字も要チェック。";
     }
   }
 
-  function downloadDict() {
-    const blob = new Blob([$("dict").value], { type: "text/plain;charset=utf-8" });
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = "dict.txt";
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(a.href);
+  async function copyOutput() {
+    const text = $("output").value;
+    if (!text) return;
+    try {
+      await navigator.clipboard.writeText(text);
+      $("status").className = "status ok";
+      $("status").textContent = "出力をコピーした。";
+    } catch {
+      // フォールバック
+      $("output").focus();
+      $("output").select();
+      document.execCommand("copy");
+      $("status").className = "status ok";
+      $("status").textContent = "出力をコピーした（互換モード）。";
+    }
   }
 
   $("btnForward").addEventListener("click", () => run("forward"));
   $("btnReverse").addEventListener("click", () => run("reverse"));
   $("btnExtract").addEventListener("click", extractUnknown);
-  $("btnDlDict").addEventListener("click", downloadDict);
-
   $("btnSwap").addEventListener("click", () => {
     const a = $("input").value;
     $("input").value = $("output").value;
     $("output").value = a;
   });
-
+  $("btnCopyOut").addEventListener("click", copyOutput);
+  $("btnReload").addEventListener("click", loadDict);
   $("btnClear").addEventListener("click", () => {
     $("input").value = "";
     $("output").value = "";
     $("unknown").value = "";
-    $("status").textContent = "";
+    $("status").className = "status";
+    $("status").textContent = "クリアした。";
+  });
+
+  // ちょい便利：Ctrl/Cmd+Enterで順変換、Shift+Ctrl/Cmd+Enterで逆変換
+  document.addEventListener("keydown", (e) => {
+    const mod = e.ctrlKey || e.metaKey;
+    if (!mod) return;
+    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); run("forward"); }
+    if (e.key === "Enter" && e.shiftKey) { e.preventDefault(); run("reverse"); }
   });
 
   loadDict();
