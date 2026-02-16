@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>ARG 変換ツール（順/逆・辞書分離）</title>
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, "Noto Sans JP", sans-serif; margin: 16px; }
+    textarea { width: 100%; min-height: 140px; }
+    .row { display: grid; grid-template-columns: 1fr; gap: 10px; margin: 12px 0; }
+    .btns { display: flex; gap: 8px; flex-wrap: wrap; }
+    button { padding: 10px 12px; cursor: pointer; }
+    .hint { color: #555; font-size: 13px; line-height: 1.5; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  </style>
+</head>
+<body>
+  <h2>ARG 変換ツール（順変換 / 逆変換）</h2>
+
+  <div class="row">
+    <div class="hint">
+      辞書は <span class="mono">dict.txt</span> を自動読込。更新は dict.txt だけ差し替えでOK。<br>
+      形式：TSV推奨（暗号&lt;Tab&gt;平文）。B空欄行は無視。
+    </div>
+
+    <label>
+      辞書（表示のみ。必要なら編集→下の「辞書をダウンロード」）
+      <textarea id="dict" class="mono" placeholder="dict.txt 読み込み中…"></textarea>
+    </label>
+
+    <div class="btns">
+      <button id="btnForward">順変換（暗号 → 平文）</button>
+      <button id="btnReverse">逆変換（平文 → 暗号）</button>
+      <button id="btnExtract">未変換文字を抽出</button>
+      <button id="btnSwap">入力⇔出力を入れ替え</button>
+      <button id="btnDlDict">辞書をダウンロード（dict.txt）</button>
+      <button id="btnClear">全部クリア</button>
+    </div>
+
+    <label>入力テキスト
+      <textarea id="input" placeholder="ここに貼る"></textarea>
+    </label>
+
+    <label>出力テキスト
+      <textarea id="output" placeholder="ここに結果が出る"></textarea>
+    </label>
+
+    <label>未変換文字（出現回数）
+      <textarea id="unknown" class="mono" placeholder="「未変換文字を抽出」を押すと出る"></textarea>
+    </label>
+
+    <div class="hint" id="status"></div>
+  </div>
+
+<script>
+  const $ = (id) => document.getElementById(id);
+
+  function escapeRegex(s) {
+    return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  }
+
+  function parseDict(text) {
+    const lines = text.split(/\r?\n/);
+    const pairs = [];
+    for (const line of lines) {
+      const t = line.trim();
+      if (!t) continue;
+
+      let a = "", b = "";
+      if (t.includes("\t")) {
+        const parts = t.split("\t");
+        a = (parts[0] ?? "").trim();
+        b = (parts[1] ?? "").trim();
+      } else if (t.includes(",")) {
+        const parts = t.split(",");
+        a = (parts[0] ?? "").trim();
+        b = (parts[1] ?? "").trim();
+      } else {
+        continue;
+      }
+
+      // 片方空欄は無視（B空欄は置換しない）
+      if (!a || !b) continue;
+      pairs.push([a, b]);
+    }
+    return pairs;
+  }
+
+  function buildReplacer(map) {
+    const keys = Array.from(map.keys()).sort((x, y) => y.length - x.length);
+    if (keys.length === 0) return null;
+    const re = new RegExp(keys.map(escapeRegex).join("|"), "g");
+    return (s) => s.replace(re, (m) => map.get(m) ?? m);
+  }
+
+  function buildMap(pairs, mode) {
+    const map = new Map();
+    let dup = 0;
+    for (const [a, b] of pairs) {
+      const k = (mode === "forward") ? a : b;
+      const v = (mode === "forward") ? b : a;
+      if (map.has(k) && map.get(k) !== v) dup++;
+      map.set(k, v);
+    }
+    return { map, dup };
+  }
+
+  function run(mode) {
+    const dictText = $("dict").value;
+    const input = $("input").value;
+    const pairs = parseDict(dictText);
+
+    const { map, dup } = buildMap(pairs, mode);
+    const replacer = buildReplacer(map);
+    const out = replacer ? replacer(input) : input;
+
+    $("output").value = out;
+    $("status").textContent =
+      `辞書行数: ${pairs.length} / 有効キー数: ${map.size}` +
+      (dup ? ` / 競合っぽい行: ${dup}` : "");
+  }
+
+  function extractUnknown() {
+    // 「入力→出力」で残った文字（=変換されてない候補）をカウント
+    const out = $("output").value;
+    const counts = new Map();
+    for (const ch of [...out]) {
+      if (ch === " " || ch === "　" || ch === "\n" || ch === "\r" || ch === "\t") continue;
+      counts.set(ch, (counts.get(ch) ?? 0) + 1);
+    }
+    // 頻度は並べ替えない（要望どおり）
+    let s = "";
+    for (const [k,v] of counts.entries()) s += `${k}\t${v}\n`;
+    $("unknown").value = s.trim();
+  }
+
+  async function loadDict() {
+    try {
+      const resp = await fetch("./dict.txt", { cache: "no-store" });
+      if (!resp.ok) throw new Error("dict fetch failed");
+      const txt = await resp.text();
+      $("dict").value = txt.trimEnd();
+      $("status").textContent = "dict.txt 読み込みOK";
+    } catch (e) {
+      $("dict").value = "";
+      $("status").textContent = "dict.txt が読めない。GitHub Pages上で開けてるか確認してくれ。";
+    }
+  }
+
+  function downloadDict() {
+    const blob = new Blob([$("dict").value], { type: "text/plain;charset=utf-8" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "dict.txt";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(a.href);
+  }
+
+  $("btnForward").addEventListener("click", () => run("forward"));
+  $("btnReverse").addEventListener("click", () => run("reverse"));
+  $("btnExtract").addEventListener("click", extractUnknown);
+  $("btnDlDict").addEventListener("click", downloadDict);
+
+  $("btnSwap").addEventListener("click", () => {
+    const a = $("input").value;
+    $("input").value = $("output").value;
+    $("output").value = a;
+  });
+
+  $("btnClear").addEventListener("click", () => {
+    $("input").value = "";
+    $("output").value = "";
+    $("unknown").value = "";
+    $("status").textContent = "";
+  });
+
+  loadDict();
+</script>
+</body>
+</html>
